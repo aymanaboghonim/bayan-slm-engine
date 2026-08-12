@@ -140,7 +140,7 @@ This guarantees deterministic DevEx (Developer Experience) and ensures the pipel
 ```makefile
 # Makefile for bayan-slm-engine (WSL2 / RTX 3070 constraints applied)
 
-.PHONY: setup weights data train-slm serve-ui clean-wsl-ram
+.PHONY: setup weights data train-slm serve-ui verify clean-wsl-ram
 
 # 1. Environment & Pre-commit Initialization
 setup:
@@ -168,13 +168,20 @@ serve-ui:
 		--enable-torch-compile \
 		--kv-cache-max-seq 2048
 
-# 5. WSL2 Host RAM Survival (Flushes OS pagecache to prevent 12GB OOM)
+# 5. Machine-Executable Definition of Done (DoD) gate
+verify:
+	uv run ruff check .
+	uv run ruff format --check .
+	uv run mypy src/bayan_slm_engine
+	uv run pytest tests/
+
+# 6. WSL2 Host RAM Survival (Flushes OS pagecache to prevent 12GB OOM)
 clean-wsl-ram:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
 	rm -rf .pytest_cache .ruff_cache
 	sudo sysctl -w vm.drop_caches=3
 
-# 6. Model Weight Sync (offline-ready; CATT .pt + Whisper/VITS safetensors)
+# 7. Model Weight Sync (offline-ready; CATT .pt + Whisper/VITS safetensors)
 #    Download-only: OSS checkpoints are referenced, never re-uploaded to Hugging Face.
 #    Fixtures referenced by hermetic M3.0 parity tests are committed under tests/fixtures/ (never downloaded).
 weights:

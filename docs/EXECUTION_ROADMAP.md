@@ -41,10 +41,11 @@ This document strictly governs the Spec-Driven Agent Iteration (SDAI) implementa
 4. Define `serve-ui:` wrapping the FastAPI/Gradio server with `torch.compile` flags.
 5. Define `clean-wsl-ram:` implementing the `sudo sysctl -w vm.drop_caches=3` logic and clearing PyTest/Ruff caches.
 6. Define `weights:` to pre-fetch the CATT `.pt` (pinned GitHub Release v2), Whisper, and VITS safetensors checkpoints into `checkpoints/weights/` (offline-ready; referenced by M3.x fallbacks). Invoke downloads via `uv run huggingface-hub` so the locked CLI version is used, never a global binary.
+7. Define `verify:` encoding the machine-executable DoD gate (`ruff check` → `ruff format --check` → `mypy src/bayan_slm_engine` → `pytest tests/`).
 
 
 * **Definition of Done (DoD):**
-* Running `make -n <target>` (dry-run) for all commands yields no syntax or variable resolution errors.
+* Running `make -n <target>` (dry-run) for all targets (`setup`, `data-prep`, `train-slm`, `serve-ui`, `verify`, `clean-wsl-ram`, `weights`) yields no syntax or variable resolution errors.
 
 
 
