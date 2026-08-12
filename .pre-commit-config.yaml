@@ -1,0 +1,66 @@
+# ==============================================================================
+# BAYAN-SLM-ENGINE: Pre-Commit Pipeline Specification
+# ==============================================================================
+# Domain Scope: 500M Arabic SLM (Falcon-H1 hybrid) + Whisper STT + CATT Diacritizer + VITS TTS (Python 3.12+ / PyTorch)
+# Execution Philosophy: Shift-Left Quality Gate enforcing formatting, static typing,
+#                       secret leak prevention, and model artifact guards.
+# Tooling Policy: 100% Rust-native & high-speed modern stack.
+# ==============================================================================
+
+default_language_version:
+  python: python3.12
+
+default_stages: [pre-commit]
+
+repos:
+  # ----------------------------------------------------------------------------
+  # 1. REPOSITORY HYGIENE & FILE INTEGRITY
+  # ----------------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-added-large-files
+        # Blocks accidental commits of local weights/binary datasets (>50MB)
+        args: ['--maxkb=50000']
+
+  # ----------------------------------------------------------------------------
+  # 2. ULTRA-FAST PYTHON LINTING & FORMATTING (RUFF)
+  # ----------------------------------------------------------------------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.2
+    hooks:
+      - id: ruff-check
+        name: ruff-linter
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+        name: ruff-formatter
+
+  # ----------------------------------------------------------------------------
+  # 3. STRICT STATIC TYPE CHECKING (MYPY + PYDANTIC V2 + PYTORCH)
+  # ----------------------------------------------------------------------------
+  # Local hook: runs mypy via `uv run` inside the project venv, where torch and
+  # all runtime deps are already installed. Avoids a second multi-GB torch
+  # download into an isolated hook environment.
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy-type-checker
+        entry: uv run mypy
+        language: system
+        types_or: [python, pyi]
+        pass_filenames: false
+        args: [--strict, --config-file=pyproject.toml]
+
+  # ----------------------------------------------------------------------------
+  # 4. SECRET LEAK PREVENTION (GITLEAKS)
+  # ----------------------------------------------------------------------------
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.24.2
+    hooks:
+      - id: gitleaks

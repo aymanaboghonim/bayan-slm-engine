@@ -1,0 +1,53 @@
+# ==============================================================================
+# BAYAN-SLM-ENGINE: Git Ignore Configuration
+# ==============================================================================
+
+# Python & Environment
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.uv/
+*.egg-info/
+dist/
+build/
+
+# IDE & Editor Settings
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Model Weights, Checkpoints & Large Artifacts
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.gguf
+*.onnx
+checkpoints/
+exports/
+
+# Binary Datasets & Audio Assets
+*.memmap
+*.npy
+*.npz
+*.wav
+*.mp3
+*.flac
+data/raw/
+data/processed/
+
+# Observability & Experiment Logs
+wandb/
+.phoenix/
+phoenix_data/
+*.log
+*.sqlite
+*.sqlite3
+
+# Environment & Secrets
+.env
+.env.local
+*.pem
+*.key

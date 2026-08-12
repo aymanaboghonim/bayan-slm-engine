@@ -1,0 +1,85 @@
+[project]
+name = "bayan-slm-engine"
+version = "0.1.0"
+description = "~500M Arabic SLM (Falcon-H1 hybrid) with decoupled Whisper STT + CATT diacritizer + VITS TTS acoustic engine."
+readme = "README.md"
+authors = [
+    { name = "Ayman Aboghonim", email = "aymanaboghonim@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "arize-phoenix>=19.19.1",
+    "bitsandbytes>=0.45.0",
+    "fastapi>=0.141.1",
+    "gradio>=6.0.0",
+    # huggingface-hub: download now (make weights / OSS reference-only);
+    # upload at end-of-project Phase 6.4 (own artifacts, deferred HF publish).
+    "huggingface-hub>=1.0.0",
+    "numpy>=2.5.1",
+    "opentelemetry-api>=1.44.0",
+    "opentelemetry-sdk>=1.44.0",
+    "pandas>=2.4.0",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.15.0",
+    "sentencepiece>=0.2.2",
+    "tokenizers>=0.23.1",
+    "torch>=2.13.0",
+    "torchaudio>=2.11.0",
+    "trackio>=0.9.0",
+    "uvicorn>=0.52.1",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.0",
+    "mypy>=2.3.0",
+    "pre-commit>=4.6.1",
+    "psutil>=7.0.0",
+    "pytest>=8.4.0",
+    "ruff>=0.16.2",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.1,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv]
+package = true
+
+# RTX 3070 = Ampere (sm_86) → CUDA 12.x line. Pin torch/torchaudio to the cu129
+# (CUDA 12.9) wheels: Ampere-native, and the only 12.x index carrying torch
+# 2.13.0 — avoids the default PyPI torch pulling unused CUDA-13/nvidia/triton
+# bloat (~GBs) that is incompatible with this GPU anyway.
+[tool.uv.sources]
+torch = { index = "pytorch-cu129" }
+torchaudio = { index = "pytorch-cu129" }
+
+[[tool.uv.index]]
+name = "pytorch-cu129"
+url = "https://download.pytorch.org/whl/cu129"
+explicit = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# docs/** holds the SSOT (BLUEPRINT/ROADMAP) with illustrative pseudo-code
+# blocks in markdown fences; never let ruff rewrite them.
+extend-exclude = ["docs/**"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "PERF"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+warn_unused_configs = true
+files = ["src/bayan_slm_engine"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
