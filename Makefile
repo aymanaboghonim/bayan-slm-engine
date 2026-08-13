@@ -33,7 +33,7 @@ serve-ui:
 verify:
 	uv run ruff check .
 	uv run ruff format --check .
-	uv run mypy src/bayan_slm_engine
+	uv run mypy
 	uv run pytest tests/
 
 # 6. WSL2 Host RAM Survival (Flushes OS pagecache to prevent 12GB OOM)

@@ -172,7 +172,7 @@ serve-ui:
 verify:
 	uv run ruff check .
 	uv run ruff format --check .
-	uv run mypy src/bayan_slm_engine
+	uv run mypy
 	uv run pytest tests/
 
 # 6. WSL2 Host RAM Survival (Flushes OS pagecache to prevent 12GB OOM)
@@ -215,11 +215,24 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v9
-      - name: Run Ruff (Linting & Formatting)
-        run: uv run ruff check . && uv run ruff format --check .
-      - name: Run MyPy (Strict Static Typing)
-        run: uv run mypy src/
-      - name: Execute Shape-Driven Pytest Suite (CPU only, hermetic)
+        with:
+          enable-cache: true
+          cache-dependency-glob: ["uv.lock"]
+      # CPU-only runners: override the GPU cu129 source so CI installs the
+      # ~200MB CPU torch wheel. GUARD: UV_NO_SOURCES disables ALL
+      # [[tool.uv.sources]] entries; today only torch/torchaudio use one.
+      - name: Install dependencies (CPU torch)
+        env:
+          UV_INDEX_URL: https://download.pytorch.org/whl/cpu
+          UV_NO_SOURCES: "1"
+        run: uv sync --frozen --group dev
+      - name: Ruff lint
+        run: uv run ruff check .
+      - name: Ruff format
+        run: uv run ruff format --check .
+      - name: MyPy (strict src + relaxed tests, two-tier)
+        run: uv run mypy
+      - name: Execute Shape-Driven Pytest (CPU only, hermetic)
         # Hermetic: dummy CPU tensors only; BAYAN_OFFLINE=1 blocks network checkpoint fetches
         run: BAYAN_OFFLINE=1 uv run pytest tests/
 

@@ -1,0 +1,29 @@
+name: Bayan SLM CI
+
+on: [push, pull_request]
+
+jobs:
+  static-analysis-and-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v9
+        with:
+          enable-cache: true
+          cache-dependency-glob: ["uv.lock"]
+      # CPU-only runners: override the GPU cu129 source so CI installs the
+      # ~200MB CPU torch wheel. GUARD: UV_NO_SOURCES disables ALL
+      # [[tool.uv.sources]] entries; today only torch/torchaudio use one.
+      - name: Install dependencies (CPU torch)
+        env:
+          UV_INDEX_URL: https://download.pytorch.org/whl/cpu
+          UV_NO_SOURCES: "1"
+        run: uv sync --frozen --group dev
+      - name: Ruff lint
+        run: uv run ruff check .
+      - name: Ruff format
+        run: uv run ruff format --check .
+      - name: MyPy (strict src + relaxed tests, two-tier)
+        run: uv run mypy
+      - name: Execute Shape-Driven Pytest (CPU only, hermetic)
+        run: BAYAN_OFFLINE=1 uv run pytest tests/
