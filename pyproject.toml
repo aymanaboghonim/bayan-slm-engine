@@ -78,7 +78,14 @@ python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
 warn_unused_configs = true
-files = ["src/bayan_slm_engine"]
+files = ["src/bayan_slm_engine", "tests"]
+
+# Two-tier strictness: src/ stays fully strict; tests/ relax only function
+# signature rules so pytest helpers/mocks don't fight disallow_untyped_defs.
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

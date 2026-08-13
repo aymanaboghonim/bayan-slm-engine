@@ -55,8 +55,8 @@ This document strictly governs the Spec-Driven Agent Iteration (SDAI) implementa
 * **Target Files:** `.github/workflows/ci.yml`
 * **Actionable Steps:**
 1. Create a GitHub Actions YAML leveraging `ubuntu-latest`.
-2. Configure the action to use `actions/checkout@v7` followed by `astral-sh/setup-uv@v9` (pinned 2026 LTS majors, mirroring the `ci.yml` in `BLUEPRINT.md`).
-3. Inject pipeline steps: Install dependencies, run `ruff format/check`, run `mypy`, and execute the `pytest` suite.
+2. Configure the action to use `actions/checkout@v7` followed by `astral-sh/setup-uv@v9` (pinned 2026 LTS majors) with `enable-cache: true` and `cache-dependency-glob: ["uv.lock"]`.
+3. Inject pipeline steps: `uv sync --frozen --group dev` with CPU torch override (`UV_INDEX_URL=https://download.pytorch.org/whl/cpu`, `UV_NO_SOURCES=1`), split Ruff lint + Ruff format steps, MyPy (two-tier strictness: paths + `tests.*` overrides in `pyproject.toml`), and the `pytest` suite.
 4. Explicitly note in the YAML comments that tests are restricted to CPU-only Shape-Driven validation (no CUDA requirements).
 5. Make CI hermetic: set `BAYAN_OFFLINE=1` on the pytest step and confirm no checkpoint downloads occur during tests (dummy CPU tensors only).
 
