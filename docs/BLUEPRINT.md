@@ -214,7 +214,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v9
+      # setup-uv publishes only exact release tags (no mutable major like v9);
+      # pin the exact release to avoid 'unable to find version v9' at resolve time.
+      - uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
           cache-dependency-glob: |
