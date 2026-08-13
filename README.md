@@ -14,12 +14,24 @@ flowchart LR
 
 ## Architecture
 
+The serving tier bridges the custom PyTorch models to standard web protocols via an asynchronous **FastAPI** server (no `vLLM`/`TGI`). Native inference gives absolute control over KV-cache allocation, memory fragmentation, and tensor tracing.
+
 ```mermaid
 flowchart TD
-    A["RAW AUDIO INPUT (16kHz)"] --> STT["STT SUBSYSTEM<br/>[244M Whisper STT] --> BPE Text IDs"]
-    STT --> TIERA["TIER A: CAUSAL TEXT SLM (~500M)<br/>Falcon-H1 (GQA + RoPE + SwiGLU + SDPA)<br/>- 16k Vocab Arabic BPE<br/>- Intent Parsing, Dialect Selection, JSON Structuring"]
-    TIERA -->|"Raw Arabic Text Output"| TIERB["TIER B: ARABIC TTS SUBSYSTEM<br/>1. CATT Neural Diacritizer<br/>2. Arabic G2P Engine<br/>3. VITS TTS (ar-sa)"]
+    A["Incoming HTTP / WebSocket Request --> Async Route Handler"] --> B["OpenTelemetry Context Injection"]
+    B --> C["Mode & Route Classifier"]
+    C --> D["/v1/chat"]
+    C --> E["/v1/stt"]
+    C --> F["/v1/tts"]
+    D --> D1["500M Causal SLM (torch.compile)<br/>Static KV-Cache<br/>BFloat16 Weights"]
+    E --> E1["244M Whisper STT (Arabic, multi-dialect)"]
+    F --> F1["Arabic TTS Core<br/>- CATT Diacritizer<br/>- Duration G2P<br/>- VITS (ar-sa)"]
+    D1 --> G["Streaming Response (SSE JSON / Audio Chunks)"]
+    E1 --> G
+    F1 --> G
 ```
+
+**Data flow:** Raw Arabic audio → Whisper STT (244M) → Falcon-H1 SLM (~500M) → CATT diacritizer → VITS TTS (`ar-sa`).
 
 ## Hardware Constraints
 
