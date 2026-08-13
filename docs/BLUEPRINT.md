@@ -217,7 +217,8 @@ jobs:
       - uses: astral-sh/setup-uv@v9
         with:
           enable-cache: true
-          cache-dependency-glob: ["uv.lock"]
+          cache-dependency-glob: |
+            uv.lock
       # CPU-only runners: override the GPU cu129 source so CI installs the
       # ~200MB CPU torch wheel. GUARD: UV_NO_SOURCES disables ALL
       # [[tool.uv.sources]] entries; today only torch/torchaudio use one.

@@ -59,6 +59,7 @@ This document strictly governs the Spec-Driven Agent Iteration (SDAI) implementa
 3. Inject pipeline steps: `uv sync --frozen --group dev` with CPU torch override (`UV_INDEX_URL=https://download.pytorch.org/whl/cpu`, `UV_NO_SOURCES=1`), split Ruff lint + Ruff format steps, MyPy (two-tier strictness: paths + `tests.*` overrides in `pyproject.toml`), and the `pytest` suite.
 4. Explicitly note in the YAML comments that tests are restricted to CPU-only Shape-Driven validation (no CUDA requirements).
 5. Make CI hermetic: set `BAYAN_OFFLINE=1` on the pytest step and confirm no checkpoint downloads occur during tests (dummy CPU tensors only).
+6. Add pre-commit hooks: `actionlint` (validates workflow grammar locally — catches errors the generic `check-yaml` misses) and a local `pytest` hook (reuses the project venv; pre-commit then covers tests automatically at commit).
 
 
 * **Definition of Done (DoD):**
