@@ -58,6 +58,25 @@ repos:
         args: [--strict, --config-file=pyproject.toml]
 
   # ----------------------------------------------------------------------------
+  # 3b. PYTEST (reuses project venv; hermetic offline mode is CI-only)
+  # ----------------------------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: uv run pytest
+        language: system
+        pass_filenames: false
+
+  # ----------------------------------------------------------------------------
+  # 3c. GITHUB ACTIONS WORKFLOW LINT (catches Actions-grammar errors locally)
+  # ----------------------------------------------------------------------------
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.7
+    hooks:
+      - id: actionlint
+
+  # ----------------------------------------------------------------------------
   # 4. SECRET LEAK PREVENTION (GITLEAKS)
   # ----------------------------------------------------------------------------
   - repo: https://github.com/gitleaks/gitleaks
