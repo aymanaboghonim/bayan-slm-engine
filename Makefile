@@ -1,7 +1,7 @@
 # Makefile for bayan-slm-engine (WSL2 / RTX 3070 constraints applied)
 # SSOT: mirrors the makefile block in docs/BLUEPRINT.md
 
-.PHONY: setup weights data train-slm serve-ui verify clean-wsl-ram
+.PHONY: setup weights data train-slm serve-ui verify ci-smoke clean-wsl-ram
 
 # 1. Environment & Pre-commit Initialization
 setup:
@@ -36,13 +36,25 @@ verify:
 	uv run mypy
 	uv run pytest tests/
 
-# 6. WSL2 Host RAM Survival (Flushes OS pagecache to prevent 12GB OOM)
+# 6. CI smoke test (catches CI-only integration errors locally, pre-PR)
+ci-smoke:
+	@echo "Simulating clean CI environment (frozen sync, throwaway venv)..."
+	@rm -rf .venv_ci_smoke
+	@UV_PROJECT_ENVIRONMENT=.venv_ci_smoke uv sync --frozen --group dev
+	@UV_PROJECT_ENVIRONMENT=.venv_ci_smoke uv run --no-sync ruff check .
+	@UV_PROJECT_ENVIRONMENT=.venv_ci_smoke uv run --no-sync ruff format --check .
+	@UV_PROJECT_ENVIRONMENT=.venv_ci_smoke uv run --no-sync mypy
+	@UV_PROJECT_ENVIRONMENT=.venv_ci_smoke BAYAN_OFFLINE=1 uv run --no-sync pytest tests/
+	@rm -rf .venv_ci_smoke
+	@echo "CI simulation passed."
+
+# 7. WSL2 Host RAM Survival (Flushes OS pagecache to prevent 12GB OOM)
 clean-wsl-ram:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
 	rm -rf .pytest_cache .ruff_cache
 	sudo sysctl -w vm.drop_caches=3
 
-# 7. Model Weight Sync (offline-ready; CATT .pt + Whisper/VITS safetensors)
+# 8. Model Weight Sync (offline-ready; CATT .pt + Whisper/VITS safetensors)
 #    Download-only: OSS checkpoints are referenced, never re-uploaded to Hugging Face.
 #    Fixtures referenced by hermetic M3.0 parity tests are committed under tests/fixtures/ (never downloaded).
 weights:

@@ -56,10 +56,12 @@ This document strictly governs the Spec-Driven Agent Iteration (SDAI) implementa
 * **Actionable Steps:**
 1. Create a GitHub Actions YAML leveraging `ubuntu-latest`.
 2. Configure the action to use `actions/checkout@v7` (mutable major) followed by `astral-sh/setup-uv@v9.0.0` (setup-uv publishes only exact release tags — pin the exact release, not a bare major) with `enable-cache: true` and `cache-dependency-glob` (string input, multi-line `|` form).
-3. Inject pipeline steps: `uv sync --frozen --group dev` with CPU torch override (`UV_INDEX_URL=https://download.pytorch.org/whl/cpu`, `UV_NO_SOURCES=1`), split Ruff lint + Ruff format steps, MyPy (two-tier strictness: paths + `tests.*` overrides in `pyproject.toml`), and the `pytest` suite.
-4. Explicitly note in the YAML comments that tests are restricted to CPU-only Shape-Driven validation (no CUDA requirements).
-5. Make CI hermetic: set `BAYAN_OFFLINE=1` on the pytest step and confirm no checkpoint downloads occur during tests (dummy CPU tensors only).
-6. Add pre-commit hooks: `actionlint` (validates workflow grammar locally — catches errors the generic `check-yaml` misses) and a local `pytest` hook (reuses the project venv; pre-commit then covers tests automatically at commit).
+3. Trigger on `pull_request` and `push` to `main` only (dedupes double runs per PR push).
+4. Inject pipeline steps: `uv sync --frozen --group dev` (deterministic against the committed lock; no index override — the cu129 wheels are installed as locked), split Ruff lint + Ruff format steps, MyPy (two-tier strictness: paths + `tests.*` overrides in `pyproject.toml`), and the `pytest` suite.
+5. Explicitly note in the YAML comments that tests are restricted to CPU-only Shape-Driven validation (no CUDA requirements).
+6. Make CI hermetic: set `BAYAN_OFFLINE=1` on the pytest step and confirm no checkpoint downloads occur during tests (dummy CPU tensors only).
+7. Add pre-commit hooks: `actionlint` (validates workflow grammar locally — catches errors the generic `check-yaml` misses) and a local `pytest` hook (reuses the project venv; pre-commit then covers tests automatically at commit).
+8. Add a `ci-smoke` Makefile target: throwaway `.venv_ci_smoke` + `uv sync --frozen --group dev` + `ruff` + `mypy` + hermetic `pytest` — catches CI-only integration/lock errors locally before opening a PR.
 
 
 * **Definition of Done (DoD):**

@@ -140,7 +140,7 @@ This guarantees deterministic DevEx (Developer Experience) and ensures the pipel
 ```makefile
 # Makefile for bayan-slm-engine (WSL2 / RTX 3070 constraints applied)
 
-.PHONY: setup weights data train-slm serve-ui verify clean-wsl-ram
+.PHONY: setup weights data train-slm serve-ui verify ci-smoke clean-wsl-ram
 
 # 1. Environment & Pre-commit Initialization
 setup:
@@ -175,13 +175,25 @@ verify:
 	uv run mypy
 	uv run pytest tests/
 
-# 6. WSL2 Host RAM Survival (Flushes OS pagecache to prevent 12GB OOM)
+# 6. CI smoke test (catches CI-only integration errors locally, pre-PR)
+ci-smoke:
+	@echo "Simulating clean CI environment (frozen sync, throwaway venv)..."
+	@rm -rf .venv_ci_smoke
+	@UV_PROJECT_ENVIRONMENT=.venv_ci_smoke uv sync --frozen --group dev
+	@UV_PROJECT_ENVIRONMENT=.venv_ci_smoke uv run --no-sync ruff check .
+	@UV_PROJECT_ENVIRONMENT=.venv_ci_smoke uv run --no-sync ruff format --check .
+	@UV_PROJECT_ENVIRONMENT=.venv_ci_smoke uv run --no-sync mypy
+	@UV_PROJECT_ENVIRONMENT=.venv_ci_smoke BAYAN_OFFLINE=1 uv run --no-sync pytest tests/
+	@rm -rf .venv_ci_smoke
+	@echo "CI simulation passed."
+
+# 7. WSL2 Host RAM Survival (Flushes OS pagecache to prevent 12GB OOM)
 clean-wsl-ram:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
 	rm -rf .pytest_cache .ruff_cache
 	sudo sysctl -w vm.drop_caches=3
 
-# 7. Model Weight Sync (offline-ready; CATT .pt + Whisper/VITS safetensors)
+# 8. Model Weight Sync (offline-ready; CATT .pt + Whisper/VITS safetensors)
 #    Download-only: OSS checkpoints are referenced, never re-uploaded to Hugging Face.
 #    Fixtures referenced by hermetic M3.0 parity tests are committed under tests/fixtures/ (never downloaded).
 weights:
@@ -207,7 +219,12 @@ Because free CI runners lack GPUs, the pipeline validates architectural integrit
 # .github/workflows/ci.yml
 name: Bayan SLM CI
 
-on: [push, pull_request]
+# Run once per PR (pull_request) and once on main merges (push).
+# Avoids double runs when pushing to a PR branch.
+on:
+  pull_request:
+  push:
+    branches: [main]
 
 jobs:
   static-analysis-and-tests:
@@ -221,13 +238,9 @@ jobs:
           enable-cache: true
           cache-dependency-glob: |
             uv.lock
-      # CPU-only runners: override the GPU cu129 source so CI installs the
-      # ~200MB CPU torch wheel. GUARD: UV_NO_SOURCES disables ALL
-      # [[tool.uv.sources]] entries; today only torch/torchaudio use one.
-      - name: Install dependencies (CPU torch)
-        env:
-          UV_INDEX_URL: https://download.pytorch.org/whl/cpu
-          UV_NO_SOURCES: "1"
+      # Deterministic install against the committed lock (cu129 wheels).
+      # --frozen fails the build on any lock drift instead of silently re-resolving.
+      - name: Install dependencies (frozen)
         run: uv sync --frozen --group dev
       - name: Ruff lint
         run: uv run ruff check .

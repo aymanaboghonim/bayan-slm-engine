@@ -1,6 +1,11 @@
 name: Bayan SLM CI
 
-on: [push, pull_request]
+# Run once per PR (pull_request) and once on main merges (push).
+# Avoids double runs when pushing to a PR branch.
+on:
+  pull_request:
+  push:
+    branches: [main]
 
 jobs:
   static-analysis-and-tests:
@@ -14,13 +19,9 @@ jobs:
           enable-cache: true
           cache-dependency-glob: |
             uv.lock
-      # CPU-only runners: override the GPU cu129 source so CI installs the
-      # ~200MB CPU torch wheel. GUARD: UV_NO_SOURCES disables ALL
-      # [[tool.uv.sources]] entries; today only torch/torchaudio use one.
-      - name: Install dependencies (CPU torch)
-        env:
-          UV_INDEX_URL: https://download.pytorch.org/whl/cpu
-          UV_NO_SOURCES: "1"
+      # Deterministic install against the committed lock (cu129 wheels).
+      # --frozen fails the build on any lock drift instead of silently re-resolving.
+      - name: Install dependencies (frozen)
         run: uv sync --frozen --group dev
       - name: Ruff lint
         run: uv run ruff check .
