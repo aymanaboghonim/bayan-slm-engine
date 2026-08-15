@@ -112,7 +112,8 @@ bayan-slm-engine/
 │       │   └── memmap_streamer.py # Zero-RAM uint16 binary dataloader
 │       ├── tokenizer/
 │       │   ├── normalizer.py      # Unicode NFC, Alef unification, Clitic handlers
-│       │   └── bpe_trainer.py     # Custom 16k Arabic-native BPE
+│       │   ├── bpe_trainer.py     # Custom 16k Arabic-native BPE
+│       │   └── verify_vocab.py    # Tokenizer diagnostic report (stdout + Trackio + JSON)
 │       ├── models/
 │       │   ├── text_slm.py        # 500M Causal LM (GQA, RoPE, SDPA)
 │       │   ├── stt_encoder.py     # Whisper-Small STT (244M)
@@ -273,6 +274,30 @@ Standard tokenizers (LLaMA, GPT-4) fragment Arabic severely due to poor handling
 
 
 * **Custom BPE Compression:** A 16,000-vocabulary Byte-Pair Encoding model trained on the deduplicated SDAIA + synthetic Arabic corpus, optimized for morphological clitics (e.g., `و`, `ال`). This exact size ensures every token ID fits within a `uint16` integer for the zero-copy memory-mapped data streaming, and the vocabulary is injected into Falcon-H1 via an embedding resize.
+
+#### Phase 1 Tokenizer Quality Diagnostic Report (Calculate & Report)
+
+During `make tokenize`, the trained 16k Arabic BPE model is benchmarked against a deterministic seeded validation split (2% holdout) via `verify_vocab.py`. Metrics are computed, logged to Trackio, and exported to `logs/tokenizer_metrics.json` for empirical auditing. This is a **diagnostic report, never a quality gate** — the pipeline always exits 0.
+
+Treating MSA-benchmarked tools (Farasa/CamelTools) as a hard gate would punish the model for learning Saudi dialects: standard MSA segmenters flag native dialectal clitics (`وش`, `تكفى`, `الحين`) as incorrect splits, so morphological F1 against MSA tools is **informational only** (optional, guarded by `--with-morph-alignment`); dialect divergence from MSA is expected and correct.
+
+| Metric | Target Benchmark Range¹ | Diagnostic Purpose & Operational Impact |
+| :--- | :--- | :--- |
+| **Fertility Rate ($F$)** | $1.2 \le F \le 1.5$ tokens / word | Monitors sequence bloat. $F > 1.8$ indicates severe subword fragmentation and increased TPOT latency. |
+| **Single-Char Fallback ($R_{\text{char}}$)** | $< 5.0\%$ of content tokens | Character-spelling fallback on noisy speech transcripts. Excludes the 8-char clitic allowlist $\{$و, ف, ب, ل, ك, س, ح, ع$\}$ — these are intentionally atomic tokens, not fallbacks. |
+| **Mean Subword Length ($L_{\text{avg}}$)** | $3.5 \le L_{\text{avg}} \le 4.8$ chars | Verifies subwords represent meaningful stems rather than bytes. Length counted in Arabic characters (codepoints), not UTF-8 bytes. |
+| **Dead / Rare Tokens ($<50$ hits)** | $< 2.0\%$ of 16,000 vocab | Checks vocabulary utilization (full-corpus frequency). Identifies oversized vocabulary choices. |
+| **Morphological Alignment ($F_1$)** | Informational baseline | Evaluated against Farasa/CamelTools for MSA reference only; dialect divergence expected. |
+
+¹ All ranges are **provisional benchmarks**, recalibrated via ADR after the first real SDAIA training run — they never gate CI. Soft warnings (never exceptions): $F > 1.8$ → TPOT latency risk; $R_{\text{char}} > 5.0\%$ → normalization defect; dead tokens $> 3.0\%$ → consider trimming vocab. Emissions: stdout report, `logs/tokenizer_metrics.json`, and Trackio run `tokenizer-diagnostics-*` (same local SQLite channel as the M4.2 training curves).
+
+> **Architectural Decision Record (ADR): The 8-Character `CLITIC_ALLOWLIST`.** The `R_{\text{char}}` fallback metric must never penalize valid Saudi dialectal prefixes, so `is_char_fallback()` excludes exactly the 8 atomic clitics $\{$و, ف, ب, ل, ك, س, ح, ع$\}$:
+>
+> * و، ف، ب، ل، ك، س — standard MSA/Saudi proclitics (conjunction, preposition, future marker).
+> * ح — Saudi dialectal **future** proclitic (حيجي، حنسوي).
+> * ع — Saudi dialectal **truncated على** proclitic (عالبيت، عالجبل).
+>
+> **`ا` is deliberately EXCLUDED** despite `أ → ا` normalization: it is a letter, not a clitic — whitelisting the most frequent Arabic letter would maximize false negatives and blind the diagnostic to genuine fallback signals (elongation `ااا`, broken normalization, byte-level fallback). The allowlist is consumed **only** by `verify_vocab.py`'s metric computation (`is_char_fallback`) and has zero effect on BPE vocabulary training or model weights — static audit verified in M1.1.
 
 ---
 
@@ -466,14 +491,19 @@ $$\mathcal{L}_{\text{DPO}}(\theta; \pi_{\text{ref}}) = -\mathbb{E}_{(x, y_w, y_l
 
 Standard open-domain LLM benchmarks (like Arabic MMLU or EXAMS) evaluate general knowledge, but they fail to capture the specific operational targets of this system: dialect purity, schema rigidity, and acoustic pronunciation accuracy. Custom benchmarks for Arabic are therefore a core requirement.
 
-To quantify performance improvements post-SFT, post-DPO, and across the audio frontend, `bayan-slm-engine` implements a specialized evaluation suite:
+To quantify performance improvements post-SFT, post-DPO, and across the audio frontend, `bayan-slm-engine` implements a specialized evaluation suite organized as a **Dual-Benchmark Strategy**:
+
+* **Track 1 — Internal Component Engineering Suite:** Measures low-level pipeline mechanics, multi-modal subsystem health, and strict hardware constraints (CATT DER, Whisper WER, VITS RTF, Zero-Shot JSON compliance, and RTX 3070 VRAM allocations). Deterministic, hermetic, runs entirely offline on committed fixtures (`BAYAN_OFFLINE=1`).
+* **Track 2 — SDAIA ALMoST Subset:** Provides external, industry-recognized credibility on authentic Saudi dialectal text, benchmarked against a *sliced* subset of the SDAIA ALMoST evaluation suite. Local-only execution (dataset download, never in CI).
 
 ```mermaid
 flowchart TD
-    A["CUSTOM ARABIC EVALUATION BENCHMARK SUITE"] --> B["TEXT METRICS<br/>- Zero-Shot JSON Compliance<br/>- TTFT / TPOT"]
-    A --> C["DIALECT METRICS<br/>- Dialect Preference Ratio (DMPR)<br/>- Lexical Drift Rate"]
-    A --> D["SPEECH METRICS<br/>- Frontend: DER<br/>- STT: WER / CER<br/>- TTS: RTF"]
+    A["DUAL-BENCHMARK EVALUATION STRATEGY"] --> B["TRACK 1 — INTERNAL ENGINEERING<br/>- Zero-Shot JSON Compliance (>= 94.5%)<br/>- DMPR (>= 88.0%)<br/>- DER / WER / RTF<br/>- VRAM budget assertions"]
+    A --> C["TRACK 2 — SDAIA ALMoST SUBSET (sliced)<br/>- Saudi regional dialect comprehension (Najdi/Hijazi)<br/>- Cultural / geographical QA<br/>- Task-oriented intent classification & routing"]
+    C --> D["EXCLUDED (architectural mismatch)<br/>- 70B-scale multi-step math reasoning<br/>- Multi-hop formal logic<br/>- Open-ended essay generation"]
 ```
+
+#### Track 1: Internal Component Engineering Suite
 
 | Evaluation Metric | Mathematical Formulation / Definition | Baseline (Pre-DPO / Generic Audio) | Post-Alignment & Custom Frontend |
 | --- | --- | --- | --- |
@@ -482,6 +512,28 @@ flowchart TD
 | **Diacritization Error Rate (DER)** | $\frac{\text{Missing or Incorrect Diacritics}}{\text{Total Arabic Characters}}$ evaluated on the CATT neural frontend. | N/A *(Blind TTS guessing)* | **$\le 4.5\%$** *(Near-perfect explicit vowelization before acoustic rendering)* |
 | **STT Accuracy (WER / CER)** | Word Error Rate ($\text{WER} = \frac{S + D + I}{N}$) and Character Error Rate (CER) on 16kHz noisy Arabic audio. | $\text{WER} \ge 65.0\%$ | **$\text{WER} \le 18.5\%$** *(Accurate acoustic-to-BPE mapping)* |
 | **TTS Real-Time Factor (RTF)** | $\text{RTF} = \frac{\text{Synthesis Time}}{\text{Audio Duration}}$ for Non-Autoregressive VITS on RTX 3070. | $\text{RTF} > 1.0$ *(Stuttering/Lag)* | **$\text{RTF} < 0.15$** *(Ultra-fast, stable real-time rendering)* |
+
+#### Track 2: SDAIA ALMoST Subset (External Credibility)
+
+Standard open-domain benchmarks lack authentic Saudi dialectal text. To anchor internal metrics to an industry-recognized external signal, the post-alignment model is evaluated against a **sliced subset** of the SDAIA ALMoST evaluation suite (authentic Saudi dialectal text), executed locally via `make eval-almost` (Phase 5, M5.3).
+
+| Evaluation Metric | Mathematical Formulation / Definition | Baseline (Pre-DPO / Generic Audio) | Post-Alignment & Custom Frontend |
+| --- | --- | --- | --- |
+| **ALMoST Saudi-Subset Accuracy** | Weighted accuracy across the sliced tasks (Najdi/Hijazi comprehension, cultural/geo QA, intent routing) on the ALMoST Saudi text split. | TBD *(measured at M5.3)* | **Target ≥ baseline-subset +5.0 pts** *(sliced; dialect-anchored)* |
+
+> **Architectural Decision Record (ADR): Partial Slicing of ALMoST.** Evaluating a 500M-parameter edge SLM — optimized for low-latency ($\le 15\text{ ms/token}$) dialect/JSON routing on an 8 GB RTX 3070 — on 70B-scale general reasoning tasks is an **architectural mismatch** that introduces noisy, low-value signal. ALMoST is therefore **partially integrated**: we keep Saudi regional dialect comprehension (Najdi/Hijazi), local cultural/geographical QA & context, and task-oriented intent classification/routing; we exclude heavy 70B-scale multi-step mathematical reasoning, multi-hop formal logic, and open-ended essay generation. Feasibility gate at M5.3: verify ALMoST access/license terms and the dialect-split integrity before wiring the harness; dataset download is local-only and never enters hermetic CI.
+
+#### Dual-Benchmark Metric & Channel Mapping
+
+| Metric | Track | Target Range | Evaluation Channel |
+| --- | --- | --- | --- |
+| Dialect Marker Preference Ratio (DMPR) | 1 | $\ge 88.0\%$ | Internal component suite (`eval/text_metrics.py`, M5.1) |
+| Zero-Shot JSON Schema Compliance | 1 | $\ge 94.5\%$ | Internal component suite (`eval/text_metrics.py`, M5.1) |
+| Diacritization Error Rate (DER) | 1 | $\le 4.5\%$ | Internal component suite (CATT frontend, M5.2) |
+| STT Accuracy (WER / CER) | 1 | $\text{WER} \le 18.5\%$ | Internal component suite (Whisper STT, M5.2) |
+| TTS Real-Time Factor (RTF) | 1 | $< 0.15$ | Internal component suite (VITS, M5.2) |
+| VRAM allocations (pretrain / DPO / serving) | 1 | $\le 4.2$ / $\le 4.8$ / $\le 2.89\text{ GB}$ | Hardware footprint assertions (M2.x–M4.x tests) |
+| ALMoST Saudi-Subset Accuracy | 2 | Target ≥ sliced baseline +5.0 pts | External SDAIA ALMoST subset (`make eval-almost`, M5.3, local-only) |
 
 #### Metric Rationale & Arabic-Specific Adjustments
 

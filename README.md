@@ -67,6 +67,7 @@ flowchart TD
 ```bash
 make setup       # dirs + uv sync + pre-commit
 make weights     # fetch OSS checkpoints (offline-ready)
+make tokenize    # train 16k Arabic BPE + tokenizer diagnostic report (M1.1)
 make data-prep   # pack SDAIA + synthetic data into uint16 memmap
 make train-slm   # 500M continued pretraining / SFT (8GB VRAM enforced)
 make serve-ui    # FastAPI + Gradio dashboard (http://localhost:7860)

@@ -28,6 +28,10 @@ build/
 checkpoints/
 exports/
 
+# Runtime Artifacts & Raw Data
+logs/
+data/
+
 # Binary Datasets & Audio Assets
 *.memmap
 *.npy
