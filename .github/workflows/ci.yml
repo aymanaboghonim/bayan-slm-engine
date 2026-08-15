@@ -1,5 +1,11 @@
 name: Bayan SLM CI
 
+# Least-privilege GITHUB_TOKEN: the workflow only reads the repository
+# (checkout, uv cache, tests) — never writes. Satisfies CodeQL
+# actions/missing-workflow-permissions.
+permissions:
+  contents: read
+
 # Run once per PR (pull_request) and once on main merges (push).
 # Avoids double runs when pushing to a PR branch.
 on:
