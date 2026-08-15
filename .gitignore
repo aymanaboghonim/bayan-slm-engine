@@ -29,8 +29,10 @@ checkpoints/
 exports/
 
 # Runtime Artifacts & Raw Data
-logs/
-data/
+# Anchored to repo root: only ignore the runtime dirs `make setup` creates
+# (/data/ /logs/), NEVER the source package (src/bayan_slm_engine/data/).
+/logs/
+/data/
 
 # Binary Datasets & Audio Assets
 *.memmap
@@ -39,8 +41,8 @@ data/
 *.wav
 *.mp3
 *.flac
-data/raw/
-data/processed/
+/data/raw/
+/data/processed/
 
 # Observability & Experiment Logs
 wandb/

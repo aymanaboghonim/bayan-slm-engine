@@ -116,9 +116,10 @@ This document strictly governs the Spec-Driven Agent Iteration (SDAI) implementa
 > **Verification Corpus Scope (M1.1):** `make tokenize` trains and verifies on the committed hermetic bootstrap corpus (`tests/fixtures/dialect_corpus.txt`) so CI stays offline (`BAYAN_OFFLINE=1`). Real SDAIA verification lands with M1.2; local ALMoST-style runs (e.g., the SDAIA ALMoST Saudi text split) are supported at any time via the existing `CORPUS` override — `make tokenize CORPUS=/path/to/almost-saudi.txt` — without any CI wiring (Dual-Benchmark Track 2, BLUEPRINT §3).
 
 
-### Milestone 1.2: SDAIA Metadata Ingestion & Modality Routing
+### Milestone 1.2: SADA22 Metadata Ingestion & Modality Routing
 
-* **Context:** Blindly ingesting the 50GB audio dataset will cause an OOM crash. We must download only the metadata (Parquet), filter it demographically (Najdi/Hijazi), and construct the dynamic field router to pass punctuation/diacritics to Tier A (Text SLM) while stripping them for Tier B (STT).
+* **Context:** Blindly ingesting the 50GB audio dataset will cause an OOM crash. We must download only the metadata (Parquet) of the **SADA22** corpus (`MohamedRashad/SADA22` — Saudi Audio Dataset, SDAIA NCAI; ~667h; `cc-by-nc-sa-4.0`), filter it demographically (Najdi/Hijazi), and construct the dynamic field router to pass punctuation/diacritics to Tier A (Text SLM) while stripping them for Tier B (STT).
+* **Verified SADA22 schema:** columns `audio`, `text`, `cleaned_text`, `speaker_age` (string), `speaker_gender`, `speaker_dialect` (capitalized `Najdi`/`Hijazi`/`Unknown`). Multi-speaker rows carry the literal sentinel `More than 1 speaker اكثر من متحدث` in all demographic columns — retained for Tier A (conversational turn-taking) and purged from Tier B TTS (acoustic cross-talk / MAS collapse), per blueprint §"Domain & Persona Focus".
 * **Target Files:**
   * `src/bayan_slm_engine/data/ingestion.py`
   * `tests/test_data_routing.py`
@@ -126,7 +127,7 @@ This document strictly governs the Spec-Driven Agent Iteration (SDAI) implementa
 * **Actionable Steps (Contract-First):**
   1. **Step A (Interface):** Define Pydantic v2 schemas for the expected raw Parquet rows and the output structured dataclasses (e.g., `TierATrainingRow`, `TierBTrainingRow`).
   2. **Step B (Tests):** Write assertions proving that when a multi-speaker row is passed, it is preserved for Tier A but actively purged/dropped for Tier B TTS. Assert that the STT router strictly outputs `cleaned_text` (no punctuation).
-  3. **Step C (Implement):** Implement the Pandas metadata filtering logic strictly on the SDAIA `.parquet` files. (Synthetic deduplication is deferred to Milestone 1.3).
+  3. **Step C (Implement):** Implement the Pandas metadata filtering logic strictly on the SADA22 `.parquet` files. (Synthetic deduplication is deferred to Milestone 1.3).
 
 * **Definition of Done (DoD):**
   * `pytest tests/test_data_routing.py` passes.
