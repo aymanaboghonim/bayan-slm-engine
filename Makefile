@@ -1,7 +1,7 @@
 # Makefile for bayan-slm-engine (WSL2 / RTX 3070 constraints applied)
 # SSOT: mirrors the makefile block in docs/BLUEPRINT.md
 
-.PHONY: setup weights data train-slm serve-ui verify ci-smoke clean-wsl-ram
+.PHONY: setup weights tokenize data-prep train-slm serve-ui verify ci-smoke clean-wsl-ram
 
 # 1. Environment & Pre-commit Initialization
 setup:
@@ -63,3 +63,13 @@ weights:
 	uv run huggingface-hub download wasmdashai/vits-ar-sa-huba --local-dir checkpoints/weights/vits
 	curl -fL -o checkpoints/weights/catt_eo.pt \
 		https://github.com/abjadai/catt/releases/download/v2/best_eo_mlm_ns_epoch_193.pt
+
+# 9. Tokenizer Training + Diagnostic Report (M1.1; Calculate & Report paradigm)
+#    Trains the 16k clitic-optimized Arabic BPE, then emits the diagnostic report
+#    (stdout + logs/tokenizer_metrics.json + Trackio run). The report NEVER gates
+#    the pipeline. Bootstrap corpus until the real SDAIA corpus lands in M1.2.
+CORPUS ?= tests/fixtures/dialect_corpus.txt
+tokenize:
+	mkdir -p checkpoints logs
+	uv run python -m bayan_slm_engine.tokenizer.bpe_trainer --corpus $(CORPUS) --output checkpoints/tokenizer.json
+	uv run python -m bayan_slm_engine.tokenizer.verify_vocab --tokenizer checkpoints/tokenizer.json --corpus $(CORPUS)

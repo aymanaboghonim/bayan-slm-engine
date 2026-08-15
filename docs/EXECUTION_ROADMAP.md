@@ -96,18 +96,24 @@ This document strictly governs the Spec-Driven Agent Iteration (SDAI) implementa
 * **Target Files:**
   * `src/bayan_slm_engine/tokenizer/normalizer.py`
   * `src/bayan_slm_engine/tokenizer/bpe_trainer.py`
+  * `src/bayan_slm_engine/tokenizer/verify_vocab.py`
   * `tests/test_tokenizer_shapes.py`
+  * `tests/test_tokenizer_metrics.py`
 
 * **Actionable Steps (Contract-First):**
-  1. **Step A (Interface):** Stub the `ArabicNormalizer` and `BPETrainer` classes with strict input/output type hints.
-  2. **Step B (Tests):** Write `pytest` assertions that feed highly complex dialectal Arabic strings (mixed diacritics, varying Alefs) into the normalizer and assert exact expected string outputs. Write a round-trip test asserting `decode(encode(text)) == normalized_text`.
-  3. **Step C (Implement):** Implement the Unicode NFC normalization, regex-based clitic handling, Hamza-position normalization, Ha/Ta-Marbuta (`ه` vs `ة`) resolution, and stripping of spurious diacritics (leaving diacritization strictly to the TTS frontend), plus the Hugging Face `tokenizers` training loop to hit exactly $V = 16,000$.
+  1. **Step A (Interface):** Stub the `ArabicNormalizer` and `BPETrainer` classes with strict input/output type hints. Define the `TokenizerMetricsReport` Pydantic v2 schema (fertility, `r_char`, `l_avg`, `dead_pct`, optional `morph_f1`) and the `report_metrics(report) -> int` diagnostic contract (BLUEPRINT §2 — Calculate & Report paradigm).
+  2. **Step B (Tests):** Write `pytest` assertions that feed highly complex dialectal Arabic strings (mixed diacritics, varying Alefs) into the normalizer and assert exact expected string outputs. Write a round-trip test asserting `decode(encode(text)) == normalized_text`. Write metric unit tests on pure functions over dummy token lists — asserting `r_char` **excludes** the 8-char clitic allowlist $\{$و, ف, ب, ل, ك, س, ح, ع$\}$ (and that `ا` **is** flagged as fallback — deliberate ADR decision, BLUEPRINT §2) — and a report-emission test asserting exit code 0, the `logs/tokenizer_metrics.json` artifact, and the Trackio `tokenizer-diagnostics-*` run (soft warnings, never exceptions).
+  3. **Step C (Implement):** Implement the Unicode NFC normalization, regex-based clitic handling, Hamza-position normalization, Ha/Ta-Marbuta (`ه` vs `ة`) resolution, and stripping of spurious diacritics (leaving diacritization strictly to the TTS frontend), plus the Hugging Face `tokenizers` training loop to hit exactly $V = 16,000$. Implement `verify_vocab.py`: seeded 2% validation holdout (`is_validation_line`, deterministic via `blake2b` — immune to `PYTHONHASHSEED`), streaming RAM-safe metric computation, and triple emission (stdout report + `logs/tokenizer_metrics.json` + Trackio run `tokenizer-diagnostics-*`). Metrics are computed on the validation split; dead/rare token utilization on the full corpus. Soft warnings per BLUEPRINT §2 provisional ranges — the report **never gates** the pipeline (always exit 0). Morph F1 is informational and guarded by `--with-morph-alignment`.
 
 * **Definition of Done (DoD):**
   * `pytest tests/test_tokenizer_shapes.py` passes.
+  * `pytest tests/test_tokenizer_metrics.py` passes.
   * The generated tokenizer `.json` file explicitly caps at 16,000 tokens.
+  * `verify_vocab.py` emits the diagnostic report (`logs/tokenizer_metrics.json` + Trackio `tokenizer-diagnostics-*` run) with exit code 0 — report *presence*, not threshold pass, gates the milestone.
 
 > **BPE Training & Token Coverage Rule:** The 16k BPE tokenizer in Milestone 1.1 must be trained on a representative bootstrap corpus combining raw normalized SDAIA text *and* synthetic JSON dialogue schema templates. In Milestone 1.4, before executing `uint16` binary packing, the packer must validate that all synthetic distillation pairs yield zero Out-Of-Vocabulary (OOV) errors against the frozen 16k vocabulary.
+
+> **Verification Corpus Scope (M1.1):** `make tokenize` trains and verifies on the committed hermetic bootstrap corpus (`tests/fixtures/dialect_corpus.txt`) so CI stays offline (`BAYAN_OFFLINE=1`). Real SDAIA verification lands with M1.2; local ALMoST-style runs (e.g., the SDAIA ALMoST Saudi text split) are supported at any time via the existing `CORPUS` override — `make tokenize CORPUS=/path/to/almost-saudi.txt` — without any CI wiring (Dual-Benchmark Track 2, BLUEPRINT §3).
 
 
 ### Milestone 1.2: SDAIA Metadata Ingestion & Modality Routing
@@ -318,11 +324,11 @@ This document strictly governs the Spec-Driven Agent Iteration (SDAI) implementa
 
 ## Phase 5: Evaluation & Custom Benchmarking Suite
 
-**Objective:** Implement the custom Arabic benchmarking suite. Standard open-domain LLM metrics (like Perplexity or MMLU) fail to capture the operational targets of this system. This phase constructs the deterministic evaluation engine to mathematically prove dialect purity, schema rigidity, and acoustic accuracy across the multi-modal pipeline prior to serving. On passing M5.1/M5.2, populate the README evaluation table with measured DMPR / JSON compliance / DER / WER / RTF values, replacing the target placeholders.
+**Objective:** Implement the Dual-Benchmark Strategy (BLUEPRINT §3) — **Track 1** internal component engineering suite (deterministic, hermetic metrics: dialect purity, schema rigidity, acoustic accuracy, hardware constraints) and **Track 2** external SDAIA ALMoST subset (sliced Saudi dialectal text, local-only). Standard open-domain LLM metrics (like Perplexity or MMLU) fail to capture the operational targets of this system. On passing M5.1/M5.2 (Track 1) and M5.3 (Track 2), populate the README evaluation table with measured DMPR / JSON compliance / DER / WER / RTF / ALMoST-subset values, replacing the target placeholders.
 
 *Execution Reminder:* Strict Contract-First SDAI loop required. Build the mathematical metric evaluators as pure functions before integrating them into a benchmarking script.
 
-### Milestone 5.1: Dialect Purity & Schema Validation Engine
+### Milestone 5.1: Dialect Purity & Schema Validation Engine (Track 1 — Internal Suite)
 *   **Context:** We must evaluate the SLM's post-DPO performance using two strict operational metrics: Dialect Marker Preference Ratio (DMPR) to track regional particle accuracy (e.g., suppressing Levantine `بدّي`), and Zero-Shot JSON Schema Compliance (testing raw `json.loads()` success without constrained-decoding crutches).
 *   **Target Files:**
     *   `src/bayan_slm_engine/eval/text_metrics.py`
@@ -335,7 +341,7 @@ This document strictly governs the Spec-Driven Agent Iteration (SDAI) implementa
     *   `pytest tests/test_eval_text.py` passes.
     *   The benchmarking script successfully evaluates 500 generated prompt responses, targeting DMPR $\ge 88.0\%$ and JSON Compliance $\ge 94.5\%$.
 
-### Milestone 5.2: Acoustic Frontend Verification (DER, WER, & RTF)
+### Milestone 5.2: Acoustic Frontend Verification (DER, WER, & RTF) (Track 1 — Internal Suite)
 *   **Context:** The TTS bottleneck is missing diacritics. We must quantify the CATT neural diacritizer's accuracy using Diacritization Error Rate (DER). Furthermore, we need to track the STT Word Error Rate (WER) and the VITS Real-Time Factor (RTF) to prove the pipeline runs smoothly on the RTX 3070.
 *   **Target Files:**
     *   `src/bayan_slm_engine/eval/audio_metrics.py`
@@ -347,6 +353,20 @@ This document strictly governs the Spec-Driven Agent Iteration (SDAI) implementa
 *   **Definition of Done (DoD):**
     *   `pytest tests/test_eval_audio.py` passes.
     *   The acoustic benchmarking suite yields metrics proving the architecture hits blueprint targets: DER $\le 4.5\%$, STT WER $\le 18.5\%$, and TTS RTF $< 0.15$.
+
+### Milestone 5.3: Track 2 — SDAIA ALMoST Saudi-Subset Harness
+*   **Context:** Provide external, industry-recognized credibility on authentic Saudi dialectal text by benchmarking the post-alignment model against a **sliced subset** of the SDAIA ALMoST evaluation suite (BLUEPRINT §3 Dual-Benchmark Strategy). The slice keeps Saudi regional dialect comprehension (Najdi/Hijazi), cultural/geographical QA, and task-oriented intent routing; it excludes 70B-scale multi-step reasoning, multi-hop formal logic, and open-ended essay generation (architectural-mismatch ADR). Dataset download is **local-only** — never in hermetic CI (`BAYAN_OFFLINE=1`).
+*   **Target Files:**
+    *   `src/bayan_slm_engine/eval/almost_harness.py`
+    *   `tests/test_almost_harness.py`
+    *   `Makefile` — `eval-almost` target (local-only; documents ALMoST access/license gate)
+*   **Actionable Steps (Contract-First):**
+    1.  **Step A (Interface):** Stub the `ALMoSTSlice` dataclass (subset paths, task labels, license gate flag) and `evaluate_almost_slice(model, slice) -> dict[str, float]`.
+    2.  **Step B (Tests):** Write unit tests over a committed minimal ALMoST-style fixture (dummy Saudi-slice items) asserting the slicing filter excludes reasoning/essay categories, and that the license gate raises when the ALMoST dataset is absent or unlicensed (hermetic — no real download).
+    3.  **Step C (Implement):** Implement the slicing filter (keep: dialect comprehension, cultural/geo QA, intent routing; drop: 70B-scale math/logic/essays), the local `make eval-almost` harness, and the per-task accuracy aggregation. **Feasibility gate:** verify ALMoST access/license terms and dialect-split integrity before wiring real data; record an ADR if the dataset is inaccessible.
+*   **Definition of Done (DoD):**
+    *   `pytest tests/test_almost_harness.py` passes (hermetic fixtures only).
+    *   `make eval-almost` runs locally against the sliced ALMoST Saudi subset and reports per-task accuracy + aggregate (target ≥ sliced baseline + 5.0 pts; baseline measured at first run).
 
 
 ## Phase 6: High-Throughput Serving & Observability
