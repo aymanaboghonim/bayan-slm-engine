@@ -136,19 +136,23 @@ This document strictly governs the Spec-Driven Agent Iteration (SDAI) implementa
 
 ### Milestone 1.3: Frontier API Distillation Pipeline
 
-* **Context:** Convert raw SADA transcripts into multi-turn JSON dialogue pairs using frontier APIs (DeepSeek / Gemini). The script applies dynamic metadata prompts based on demographic tags (`speaker_gender`, `speaker_age`, `speaker_dialect`) to enforce native Arabic conjugations and structured JSON schema formatting.
+* **Context:** Convert raw SADA transcripts into multi-turn JSON dialogue pairs using the DeepSeek API (`deepseek-v4-flash`; OpenAI-compatible `https://api.deepseek.com` — Gemini is a drop-in via `base_url`/`model` config, deferred until the DeepSeek key/limits are exercised). The script applies dynamic metadata prompts based on demographic tags (`speaker_gender`, `speaker_age`, `speaker_dialect`) to enforce native Arabic conjugations and structured JSON schema formatting. Thinking mode is ON by default on DeepSeek and is explicitly disabled for this schema-restructure task (4–6x latency/cost saving); JSON Output mode is used with `max_tokens` set to avoid truncation.
 * **Target Files:**
   * `src/bayan_slm_engine/data/distillation.py`
+  * `src/bayan_slm_engine/data/sada22_lexicon.py` (soft speaker-dispersion validator)
   * `tests/test_distillation_schema.py`
+  * `tests/test_sada22_lexicon.py`
 
 * **Actionable Steps (Contract-First):**
-  1. **Step A (Interface):** Define Pydantic v2 schemas for the input demographic row and the resulting output JSON schema (`MultiTurnDialogue`).
-  2. **Step B (Tests):** Write unit tests with mocked API responses to assert that generated dialogues strictly validate against the Pydantic schema, contain valid JSON keys (`user`, `assistant`, `dialect`), and pass regex checks (ensuring no non-JSON wrapper text is present).
-  3. **Step C (Implement):** Implement async batch processing calls to the frontier API with exponential backoff and rate-limit handling. Add the regex and MinHash LSH (Jaccard = 0.75) deduplication rules on the output to purge hallucinated Levantine/Egyptian drift (e.g., عايز, بدّي).
+  1. **Step A (Interface):** Define Pydantic v2 schemas for the input demographic row (`DistillationInputRow`), the resulting output JSON schema (`MultiTurnDialogue` — keys `user`/`assistant`/`dialect`), the `DistillationConfig` settings, and the `DistillationReport` outcome schema.
+  2. **Step B (Tests):** Write unit tests with mocked API responses (`httpx.MockTransport` — hermetic, `BAYAN_OFFLINE=1` safe) to assert that generated dialogues strictly validate against the Pydantic schema, contain valid JSON keys (`user`, `assistant`, `dialect`), pass regex checks (no non-JSON wrapper text), and that the request body explicitly disables thinking and requests JSON output.
+  3. **Step C (Implement):** Implement the long-lived `httpx` client (single socket pool), bounded async concurrency (`asyncio.Semaphore`, default 8, order-preserving via indexed `gather`), exponential backoff + jitter with `Retry-After` handling on 429, fatal `DeepSeekPaymentError` on HTTP 402, per-sample failure isolation (skip + `DistillationReport` counts; `--fail-fast` opt-in), append-mode JSONL streaming with a sidecar `.anchors` resume registry (zero-loss resume at sample N+1), and the regex + MinHash LSH (Jaccard = 0.75, 5-grams) deduplication on the output — via an inverted hash-bucket index (exact Jaccard remains the arbiter).
+  4. **Step D (Lexical drift hardening):** restrict the drift denylist to unambiguous Egyptian/Levantine particles with word-boundary anchors (native Saudi `عشان`/`مين`/`ليش` pass); canonicalize `كده`/`كدا` → `كذا` in the M1.1 normalizer (clitic-preserving); add the soft local-only `Sada22LexiconValidator` (distinct-`audio` speaker proxy, `min_speakers=5`) that flags low-dispersion tokens for regeneration without gating CI.
 
 * **Definition of Done (DoD):**
-  * `pytest tests/test_distillation_schema.py` passes.
+  * `pytest tests/test_distillation_schema.py tests/test_sada22_lexicon.py` passes.
   * The generated JSONL output successfully parses via `json.loads` line-by-line without throwing decoding errors.
+  * Hermetic resilience tests pass: mocked HTTP 402 halts the batch fatally; 429 without `Retry-After` falls back to backoff+jitter (never `sleep(0)`); a bad sample is skipped while others succeed with input order preserved; the sidecar registry resumes at sample N+1.
 
 
 ### Milestone 1.4: 16-Bit Zero-Copy Binary Packer & Streamer
