@@ -1,68 +1,57 @@
 # Agent Execution Rules & Engineering Standards — bayan-slm-engine
 
----
+## PART 1: Low-Cognitive-Load HITL Protocol
 
-## PART 1: Universal Agent Execution & Human-Paced Audit Protocol
+### 1. Autonomy & Boundary Separation
+* **Silent Context Gathering (Unlimited):** You may run chained read, search, and directory inspection tools autonomously without asking for permission. Build your context completely before interacting.
+* **Guarded Mutations (Strict HITL):** You MUST NOT edit files or invoke terminal commands without explicit user approval.
+* **Direct Workspace Application:** Apply code modifications directly to target workspace files. Never dump full files or large code diffs into the chat UI. Chat is strictly for decision logic and execution gating.
 
-### 1. Communication Rules (Strict Low-Cognitive-Load Constraints)
-* **Micro-Reasoning Only:** Total text explanation per turn MUST NOT exceed **60 words**. No long walls of text, no deep chain-of-thought dumps.
-* **No Code Sprawls:** Output ONLY the specific modified function or block—never reprint entire unchanged files.
-* **Explicit Assumptions:** State system/codebase assumptions *before* executing tools or proposing diffs.
+### 2. Micro-Reasoning & Communication Limits
+* **Word Limit:** Chat output must not exceed **60 words** per turn. Omit conversational pleasantries, chain-of-thought dumps, and unsolicited summaries.
+* **Mandatory Audit Format:** Before requesting approval for any write, edit, or terminal action, emit this exact 4-line format:
+  * 🎯 **Intent:** [1 concise sentence on the targeted goal]
+  * ⚠️ **Key Assumption:** [Max 2 concise assumptions regarding codebase/state]
+  * 🛠️ **Proposed Action:** [Exact file mutation path or terminal command to run]
+  * 🛑 **Checkpoint:** "Waiting for approval to execute."
 
-### 2. Mandatory Audit Format
-Every single turn MUST follow this exact 4-line format before taking action:
-* 🎯 **Intent:** [1 sentence explaining what you are trying to achieve]
-* ⚠️ **Key Assumption:** [Max 2 bullet points on what you assume about the codebase/state]
-* 🛠️ **Single Action:** [1 line describing the exact tool call or file diff you will run]
-* 🛑 **Checkpoint:** "Waiting for approval to execute."
-
-### 3. Step-and-Steer Control Loop
-* **Single-Step Limit:** You are strictly forbidden from executing multiple tool calls or multi-file edits in a single turn.
-* **Mandatory Pause:** Execute ONE action, emit the Audit Format, and STOP immediately to wait for human confirmation.
+### 3. Step-and-Steer Loop
+* Limit execution to **one mutating action per turn** (1 file edit or 1 terminal command).
+* After approval, execute the single action and immediately pause for human review before proceeding to the next step.
 
 ---
 
 ## PART 2: Universal AI Engineering Standards
 
-1. **No High-Level Monolithic Wrappers:** Do NOT suggest or use `transformers` higher-level trainer wrappers (`TRL`, `AutoModelForCausalLM` trainers), `langchain`, or `llama-index`. Write explicit, native PyTorch (`torch.nn`, `torch.optim`) architecture and training loops.
-2. **Pydantic v2 Contracts:** All API payloads, dataset items, and system configuration structures must use Pydantic v2 `BaseModel` with explicit typing and validation.
-3. **Hardware-Budgeted Memory Safety:** All PyTorch allocations and forward passes must strictly respect the 8 GB VRAM budget on the RTX 3070 ($\le 4.2\text{ GB}$ VRAM during pretraining, $\le 4.8\text{ GB}$ VRAM during DPO alignment, $\le 2.85\text{ GB}$ VRAM during serving).
-4. **Deterministic Safety First:** Enforce schema validation, tensor shape checks, and input normalization via deterministic code (e.g., regex, PyTorch tensor asserts), never via prompt heuristics alone.
-5. **Observability Native:** Every model inference step, STT/TTS routing call, and alignment evaluation pass must be wrapped in OpenTelemetry spans and exported to Arize Phoenix.
+1. **Native Implementations Only:** Monolithic framework wrappers are strictly forbidden (`langchain`, `llama-index`, `autogen`, `TRL`, and high-level `AutoModelForCausalLM` trainers). Use explicit, native PyTorch (`torch.nn`, `torch.optim`) and custom async state machines.
+2. **Pydantic v2 Data Contracts:** All dataset schemas, internal configurations, and API payloads must use Pydantic v2 `BaseModel` with explicit typing and validation.
+3. **Hardware Budget Enforcement:** Respect the single RTX 3070 8 GB VRAM limit ($\le 4.2\text{ GB}$ pretraining, $\le 4.8\text{ GB}$ DPO, $\le 2.85\text{ GB}$ serving). Use explicit garbage collection, CUDA cache clearing, and static allocation patterns where required.
+4. **Deterministic Validation:** Enforce tensor shapes, input sanitization, and interface validation via deterministic code assertions and regex, not prompt heuristics.
+5. **Telemetry Native:** Wrap inference calls, audio pipeline stages, and alignment evaluations in OpenTelemetry spans targeting Arize Phoenix.
 
 ---
 
-## PART 3: Project Architecture & Single Source of Truth (`bayan-slm-engine`)
+## PART 3: Source of Truth & Project Context
 
-* **Single Source of Truth (SSOT):** `docs/BLUEPRINT.md` at the repository root is the authoritative technical specification. Before implementing any module, streamer, or model class, read the relevant section in `docs/BLUEPRINT.md` to verify exact hyperparameters, tensor dimensions, and model checkpoints.
+* **Authoritative Architecture:** `docs/BLUEPRINT.md` governs model configurations (Falcon-H1-0.5B-Base, STT/TTS routing, DPO alignment), tensor shapes, and serving specs. Always inspect this file before modifying model code.
+* **Authoritative Sequence:** `docs/EXECUTION_ROADMAP.md` dictates the active phase and milestone. Do not implement features outside the current phase.
+* **Environment:** Python 3.12+ managed via `uv`.
 
-* **Execution Roadmap:** `docs/EXECUTION_ROADMAP.md` is the authoritative milestone-by-milestone sequence. Implementation must proceed strictly phase-by-phase (Phase 1 through Phase 6) using the Contract-First SDAI loop.
-
-* **Project Identity:** `bayan-slm-engine` | Python 3.12+ via `uv` | PyTorch (`torch.nn`)
-* **Hardware Limit:** Single RTX 3070 (8 GB VRAM) + WSL2 Ubuntu (12 GB System RAM limit).
-* **Text Engine (Tier A):** `tiiuae/Falcon-H1-0.5B-Base` (Transformer + Mamba-2 hybrid, GQA, RoPE) adapted via domain-adaptive continued pretraining and SFT on ~15M–30M SDAIA tokens + synthetic pairs.
-* **Acoustic Engine (Tier B):** Decoupled `oddadmix/whisper-small-arabic-dialectal` (244M STT) + CATT neural diacritizer + `wasmdashai/vits-ar-sa-huba` (145 MB Saudi TTS).
-* **Alignment & Serving:** Native PyTorch DPO + 8-bit AdamW; FastAPI async streaming with static KV-cache; local Arize Phoenix telemetry via OpenTelemetry.
+---
 
 ## PART 4: Spec-Driven Agent Iteration (SDAI) Workflow
 
-Execute tasks using the SDAI framework. Never attempt unconstrained monolithic implementations.
+Implement features strictly through the Test-Driven Development (TDD) lifecycle:
 
-1. **Scope Boundaries:**
-   * **Plan / Read Mode:** UNLIMITED search, inspection, and read scope across the entire workspace.
-   * **Phase 0 Exception:** Repo scaffolding and config setup (e.g., `pyproject.toml`, `Makefile`, `ci.yml`) are permitted to create/modify all necessary setup files in a single pass.
-   * **Feature Implementation Mode:** Edits are restricted to **1 logical feature slice** (typically 1 source module + 1 interface contract + 1 test file).
-
-* **Milestone Gating:** You are strictly restricted to the current active milestone defined in `docs/EXECUTION_ROADMAP.md`. Do not jump ahead to subsequent phases or milestones without explicit human approval.
-
-2. **Contract-First Scaffolding (TDD):**
-   Before writing internal implementation logic for any feature module:
-   * **Step A:** Write the abstract class / module interface (Pydantic v2 schemas, signatures, and `raise NotImplementedError`).
-   * **Step B:** Write the corresponding `pytest` suite asserting tensor shapes, hardware boundaries, and contract responses.
-   * **Step C:** Pause. Only implement internal logic *after* the failing test is committed.
-
-3. **Machine-Executable Definition of Done (DoD):**
-   A feature task is strictly "Done" only when:
-   * `uv run ruff check .` and `uv run mypy src/` pass with zero warnings.
-   * `uv run pytest tests/` passes using dummy CPU tensors.
-   * Host RAM and VRAM footprint assertions pass.
+1. **State 1: Interface Contract**
+   * Create or update abstract interface classes and Pydantic schemas.
+   * Method stubs must raise `NotImplementedError`.
+2. **State 2: Contract Test Suite**
+   * Write `pytest` test suites validating interface contracts, tensor shapes, and memory constraints using dummy tensors on CPU.
+3. **State 3: Internal Implementation**
+   * Implement internal module logic only after failing tests are in place.
+4. **Definition of Done (DoD) Verification:**
+   * Propose running: `uv run ruff check .`
+   * Propose running: `uv run mypy src/`
+   * Propose running: `uv run pytest tests/`
+   * Confirm zero errors/warnings before closing the task.
