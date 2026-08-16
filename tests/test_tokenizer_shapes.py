@@ -60,6 +60,11 @@ class TestNormalizer:
         assert normalizer.normalize("") == ""
         assert normalizer.normalize("   ") == ""
 
+    def test_spelling_variants_canonicalized(self, normalizer: ArabicNormalizer) -> None:
+        """M1.3: كده/كدا (spoken variants) map to canonical كذا — not drift."""
+        assert normalizer.normalize("كده وكدا") == "كذا وكذا"
+        assert normalizer.normalize("شفت كده؟") == "شفت كذا؟"
+
 
 class TestBPEContract:
     def test_vocab_size_exactly_16000(self, trained_tokenizer: Tokenizer) -> None:

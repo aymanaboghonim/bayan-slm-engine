@@ -7,6 +7,9 @@ All rules are deterministic Unicode/regex transforms — never prompt heuristics
 * Unicode NFC canonical composition.
 * Alef unification (أ إ آ ٱ → ا) and Hamza-position normalization (ؤ → و, ئ → ي).
 * Ha/Ta-Marbuta resolution (ة → ه) per dialectal morphological bounds.
+* Spoken spelling-variant canonicalization (كده/كدا → كذا) — M1.3 ADR: keeps
+  synthetic distillation output orthographically consistent; variants are
+  normalized, never rejected as drift downstream.
 * Stripping of spurious diacritics — diacritization is strictly a Tier B
   TTS-frontend concern.
 * Whitespace collapse (single ASCII space) and control-character removal.
@@ -34,6 +37,19 @@ _ALEF_MAP = str.maketrans({"أ": "ا", "إ": "ا", "آ": "ا", "ٱ": "ا"})
 _HAMZA_MAP = str.maketrans({"ؤ": "و", "ئ": "ي"})
 _TA_MARBUTA_MAP = str.maketrans({"ة": "ه"})
 
+# Spoken spelling variants -> canonical Saudi orthography (M1.3 ADR).
+# ``كده``/``كدا`` ("like this") canonicalize to ``كذا``. Clitic prefixes
+# (و، ف، ب، …) are preserved (``وكدا`` -> ``وكذا``). Word-boundary anchored
+# so ``كدها`` (different lemma) never matches; applied after diacritic
+# stripping so ``كدّه`` -> ``كذا`` too.
+_CLITICS = "وفبلكسحع"
+_SPELLING_VARIANTS_RE = re.compile(rf"\b([{_CLITICS}]*)(كدا|كده)\b")
+
+
+def _canonical_spelling(match: re.Match[str]) -> str:
+    """Preserve any clitic prefix, canonicalize the variant root to كذا."""
+    return f"{match.group(1)}كذا"
+
 
 class ArabicNormalizer:
     """Deterministic orthographic normalizer for Saudi-dialectal Arabic."""
@@ -46,6 +62,7 @@ class ArabicNormalizer:
         normalized = normalized.translate(_ALEF_MAP)
         normalized = normalized.translate(_HAMZA_MAP)
         normalized = normalized.translate(_TA_MARBUTA_MAP)
+        normalized = _SPELLING_VARIANTS_RE.sub(_canonical_spelling, normalized)
         return _WHITESPACE_RE.sub(" ", normalized).strip()
 
     def normalize_batch(self, texts: Iterable[str]) -> Iterator[str]:
