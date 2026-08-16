@@ -90,7 +90,7 @@ Quality gates: `make verify` (ruff/mypy/pytest) and `make ci-smoke` (clean-env f
 ## Execution Roadmap
 
 - [ ] Phase 0 — Workspace scaffolding, Makefile, CI, README
-- [ ] Phase 1 — Tokenizer surgery & zero-copy data engine
+- [x] Phase 1 — Tokenizer surgery & zero-copy data engine
 - [ ] Phase 2 — Tier A: 500M Falcon-H1 text SLM
 - [ ] Phase 3 — Tier B: STT / CATT / VITS acoustic subsystems
 - [ ] Phase 4 — Training engine, checkpointing & DPO alignment

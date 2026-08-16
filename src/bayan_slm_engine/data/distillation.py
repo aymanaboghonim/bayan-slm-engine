@@ -63,6 +63,7 @@ import hashlib
 import random
 import re
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Literal
 
@@ -587,6 +588,22 @@ def write_dialogues_jsonl(dialogues: list[MultiTurnDialogue], path: Path) -> Non
         for dialogue in dialogues:
             handle.write(dialogue.model_dump_json() + "\n")
             handle.flush()
+
+
+def read_dialogues_jsonl(path: Path) -> Iterator[MultiTurnDialogue]:
+    """Stream validated MultiTurnDialogue rows from a UTF-8 JSONL file.
+
+    Strict reader for the M1.4 packer: every line must parse via
+    ``json.loads`` and validate against the 3-key schema (roadmap M1.3 DoD).
+    Blank lines are skipped; a malformed line raises ``ValidationError``
+    (hard contract — the packer must never silently drop a synthetic pair).
+    """
+    with path.open(encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            yield MultiTurnDialogue.model_validate_json(line)
 
 
 def anchor_hash(row: DistillationInputRow) -> str:

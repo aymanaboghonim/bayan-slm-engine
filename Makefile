@@ -9,10 +9,19 @@ setup:
 	uv sync
 	uv run pre-commit install
 
-# 2. Zero-Copy Binary Data Packing
+# 2. Zero-Copy Binary Data Packing (M1.4)
+#    Packs normalized SADA22 text rows (+ optional M1.3 synthetic JSONL) into
+#    a flat uint16 .bin with sidecar .index.npz + .meta.json via np.memmap.
+#    The frozen 16k tokenizer is required (make tokenize first).
+#    --synthetic is optional: local runs append M1.3 distilled dialogues via
+#    SYNTHETIC=data/processed/dialogues.jsonl (default: offline-safe, raw only).
+SYNTHETIC ?=
 data-prep:
-	uv run python src/bayan_slm_engine/data/memmap_streamer.py \
+	mkdir -p data/processed
+	uv run python -m bayan_slm_engine.data.memmap_streamer \
 		--input-dir data/raw_sdaia/ \
+		--tokenizer checkpoints/tokenizer.json \
+		$(if $(SYNTHETIC),--synthetic $(SYNTHETIC),) \
 		--output-bin data/processed/arabic_corpus.uint16.bin
 
 # 3. 500M SLM Pretraining (Enforcing 8GB VRAM limits)

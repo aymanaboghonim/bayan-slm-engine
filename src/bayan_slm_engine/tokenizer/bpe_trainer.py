@@ -39,6 +39,18 @@ SPECIAL_TOKENS: list[str] = ["<unk>", "<s>", "</s>", "<pad>", "<mask>"]
 # frequent Arabic letter would mask genuine fallback (elongation ااا, byte-fallback).
 CLITIC_ALLOWLIST: frozenset[str] = frozenset({"و", "ف", "ب", "ل", "ك", "س", "ح", "ع"})
 
+
+def is_char_fallback(token: str) -> bool:
+    """True if ``token`` is a lone non-clitic, non-whitespace character.
+
+    Single-char clitics (و ف ب ل ك س + dialectal ح ع) are intentionally atomic
+    tokens for Saudi-dialectal Arabic (BLUEPRINT §2) and are NOT character
+    fallbacks. ا is deliberately NOT whitelisted (see ADR in BLUEPRINT §2).
+    Re-exported from ``verify_vocab`` and reused by the M1.4 OOV gate.
+    """
+    return len(token) == 1 and not token.isspace() and token not in CLITIC_ALLOWLIST
+
+
 VOCAB_SIZE = 16_000
 VALIDATION_FRACTION = 0.02
 SEED = 42

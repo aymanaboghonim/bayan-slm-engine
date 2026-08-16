@@ -28,7 +28,13 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from tokenizers import Tokenizer
 
-from bayan_slm_engine.tokenizer.bpe_trainer import CLITIC_ALLOWLIST, is_validation_line
+# ``as is_char_fallback`` marks an explicit re-export (mypy implicit-reexport).
+from bayan_slm_engine.tokenizer.bpe_trainer import (
+    is_char_fallback as is_char_fallback,
+)
+from bayan_slm_engine.tokenizer.bpe_trainer import (
+    is_validation_line as is_validation_line,
+)
 from bayan_slm_engine.tokenizer.normalizer import ArabicNormalizer
 
 RARE_TOKEN_THRESHOLD = 50  # < 50 hits = dead/rare (BLUEPRINT §2)
@@ -53,16 +59,6 @@ class TokenizerMetricsReport(BaseModel):
     dead_pct: float = Field(ge=0.0, le=100.0)  # % vocab with < 50 hits (full corpus)
     morph_f1: float | None = None  # informational MSA-reference baseline (optional)
     timestamp: datetime
-
-
-def is_char_fallback(token: str) -> bool:
-    """True if ``token`` is a lone non-clitic, non-whitespace character.
-
-    Single-char clitics (و ف ب ل ك س + dialectal ح ع) are intentionally atomic
-    tokens for Saudi-dialectal Arabic (BLUEPRINT §2) and are NOT character
-    fallbacks. ا is deliberately NOT whitelisted (see ADR in BLUEPRINT §2).
-    """
-    return len(token) == 1 and not token.isspace() and token not in CLITIC_ALLOWLIST
 
 
 def fertility(total_content_tokens: int, total_words: int) -> float:
