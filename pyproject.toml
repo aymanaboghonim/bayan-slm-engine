@@ -15,6 +15,9 @@ dependencies = [
     # huggingface-hub: download now (make weights / OSS reference-only);
     # upload at end-of-project Phase 6.4 (own artifacts, deferred HF publish).
     "huggingface-hub>=1.0.0",
+    # httpx: runtime dep — M1.3 distillation client imports it at module level
+    # (long-lived AsyncClient for the DeepSeek/Gemini frontier API).
+    "httpx>=0.28.0",
     "numpy>=2.5.1",
     "opentelemetry-api>=1.44.0",
     "opentelemetry-sdk>=1.44.0",
@@ -32,11 +35,12 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "httpx>=0.28.0",
     "mypy>=2.3.0",
     "pandas-stubs>=3.0.5.260730",
     "pre-commit>=4.6.1",
     "psutil>=7.0.0",
+    # types-psutil: mypy strict stubs for the M1.4 psutil RAM-delta assertion.
+    "types-psutil>=7.0.0",
     "pytest>=8.4.0",
     "ruff>=0.16.2",
 ]
